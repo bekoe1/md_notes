@@ -1,0 +1,111 @@
+import 'dart:developer';
+import 'dart:io';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:md_notes/code_kit/theme/app_themes.dart';
+import 'package:md_notes/data/repo_impl/notes_repo_impl.dart';
+import 'package:md_notes/presentation/screens/graph/graph_view_screen.dart';
+import 'package:path_provider/path_provider.dart';
+
+import 'bloc/directory/directory_bloc.dart';
+import 'bloc/directory/directory_events.dart';
+import 'bloc/theme/theme_bloc.dart';
+import 'bloc/theme/theme_states.dart';
+import 'presentation/screens/about/screen_about.dart';
+import 'presentation/screens/canvas/screen_canvas.dart';
+import 'presentation/screens/hero/screen_hero.dart';
+import 'presentation/screens/home/screen_home.dart';
+import 'presentation/screens/search/screen_search.dart';
+import 'presentation/screens/settings/screen_settings.dart';
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  Future<String> fetchRootPath() async {
+    late final String path;
+
+    if (Platform.isLinux ||
+        Platform.isWindows ||
+        Platform.isMacOS ||
+        Platform.isIOS) {
+      final directory = await getApplicationDocumentsDirectory();
+      path = '${directory.path}/Endernote';
+    } else {
+      final directory = await getExternalStorageDirectory();
+      path = '${directory!.path}/Endernote';
+    }
+
+    final folder = Directory(path);
+
+    if (!await folder.exists()) {
+      await folder.create(recursive: true);
+    }
+
+    return folder.path;
+  }
+
+  runApp(
+    MyApp(rootPath: await fetchRootPath()),
+  );
+}
+
+class MyApp extends StatelessWidget {
+  const MyApp({
+    super.key,
+    required this.rootPath,
+  });
+
+  final String rootPath;
+
+  @override
+  Widget build(BuildContext context) {
+    return MultiBlocProvider(
+      providers: [
+        BlocProvider(
+          create: (context) => DirectoryBloc(NotesRepoImpl())
+            ..add(
+              FetchDirectory(path: rootPath),
+            )
+            ..add(
+              ChangeGraphPath(path: rootPath),
+            ),
+        ),
+        BlocProvider(
+          create: (context) => ThemeBloc(),
+        ),
+      ],
+      child: BlocBuilder<ThemeBloc, ThemeState>(
+        builder: (context, themeState) {
+          return MaterialApp(
+            title: 'Endernote',
+            debugShowCheckedModeBanner: false,
+            initialRoute: '/',
+            routes: {
+              '/graph': (context) => GraphViewScreen(rootPath: rootPath),
+              '/canvas': (context) => ScreenCanvas(),
+              '/home': (context) => ScreenHome(rootPath: rootPath),
+              '/settings': (context) => const ScreenSettings(),
+              '/about': (context) => const ScreenAbout(),
+              '/hero': (context) => ScreenHero(rootPath: rootPath),
+            },
+            onGenerateRoute: (settings) {
+              if (settings.name == '/search') {
+                final args = settings.arguments as Map<String, dynamic>;
+                return MaterialPageRoute(
+                  builder: (context) => ScreenSearch(
+                    searchQuery: args['query'],
+                    rootPath: args['rootPath'],
+                  ),
+                );
+              }
+              return null;
+            },
+            theme: appThemeData[themeState.theme],
+            home: ScreenHero(rootPath: rootPath),
+          );
+        },
+      ),
+    );
+  }
+}
